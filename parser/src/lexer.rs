@@ -10,6 +10,9 @@ pub enum Keyword {
     Void,
     Let,
     Fn,
+    In,
+    Newrgn,
+    Freergn
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Punctuation {
@@ -56,6 +59,10 @@ pub fn lexer<'src>() -> impl Parser<
         "let" => Token::Keyword(Keyword::Let),
         "i32" => Token::Keyword(Keyword::I32),
         "void" => Token::Keyword(Keyword::Void),
+        "newrgn" => Token::Keyword(Keyword::Newrgn),
+        "freergn" => Token::Keyword(Keyword::Freergn),
+
+        "in" => Token::Keyword(Keyword::In),
 
         "fn" => Token::Keyword(Keyword::Fn),
 

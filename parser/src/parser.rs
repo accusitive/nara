@@ -2,8 +2,11 @@ use chumsky::{input::BorrowInput, prelude::*};
 
 use crate::{
     Spanned,
-    ast::{FunctionItem, FunctionParameter, FunctionSignature, Item, TranslationUnit, Ty},
-    lexer::Token,
+    ast::{
+        Expression, FunctionItem, FunctionParameter, FunctionSignature, Item, TranslationUnit, Ty,
+        Value,
+    },
+    lexer::{Keyword, Punctuation, Token},
 };
 macro_rules! open_param {
     () => {
@@ -16,6 +19,20 @@ macro_rules! close_param {
     () => {
         just(crate::lexer::Token::Punctuation(
             crate::lexer::Punctuation::RightParen,
+        ))
+    };
+}
+macro_rules! open_bracket {
+    () => {
+        just(crate::lexer::Token::Punctuation(
+            crate::lexer::Punctuation::LeftBracket,
+        ))
+    };
+}
+macro_rules! close_bracket {
+    () => {
+        just(crate::lexer::Token::Punctuation(
+            crate::lexer::Punctuation::RightBracket,
         ))
     };
 }
@@ -74,6 +91,47 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
 
         choice((int, function_type))
     });
+
+    let value = select_ref!( Token::Literal(crate::lexer::LiteralTok::Integer(i)) => i)
+        .map_with(|s, e| Spanned::e(Value::Number(*s), e));
+    let expression = recursive(|expr| {
+        let value_expr = value.map_with(|v, e| e!(Expression::Value(v), e));
+        let path = identifier
+            .clone()
+            .map_with(|v, e| e!(Expression::Path(v), e));
+        let let_in_expr = just(Token::Keyword(Keyword::Let))
+            .ignore_then(identifier.clone())
+            .then_ignore(just(Token::Punctuation(Punctuation::Equal)))
+            .then(expr.clone())
+            .then_ignore(just(Token::Keyword(Keyword::In)))
+            .then(expr.clone())
+            .map_with(|((binding, init), next), e| {
+                e!(
+                    Expression::LetIn {
+                        binding,
+                        init: Box::new(init),
+                        next: Box::new(next)
+                    },
+                    e
+                )
+            });
+        let newrgn =
+            just(Token::Keyword(Keyword::Newrgn)).map_with(|_, e| e!(Expression::NewRegion, e));
+        let endrgn = just(Token::Keyword(Keyword::Freergn))
+            .ignore_then(expr.clone())
+            .map_with(|x, e| e!(Expression::FreeRegion(Box::new(x)), e));
+
+        let base_expr = choice((value_expr, path, let_in_expr, newrgn, endrgn));
+
+        let chained = base_expr
+            .clone()
+            .then_ignore(just(Token::Punctuation(Punctuation::Semicolon)))
+            .then(expr.clone())
+            .map_with(|(e0, e1), e| e!(Expression::Chain(Box::new(e0), Box::new(e1)), e));
+
+        choice((chained, base_expr))
+    });
+
     let parameter = identifier
         .clone()
         .then_ignore(colon!())
@@ -93,11 +151,13 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
     let fn_item = just(Token::Keyword(crate::lexer::Keyword::Fn))
         .ignore_then(identifier)
         .then(signature)
-        .map_with(|(name, signature), e| {
+        .then(expression.delimited_by(open_bracket!(), close_bracket!()))
+        .map_with(|((name, signature), body), e| {
             e!(
                 Item::Function(FunctionItem {
                     name: name,
-                    signature
+                    signature,
+                    body
                 }),
                 e
             )
