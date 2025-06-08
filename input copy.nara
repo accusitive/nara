@@ -1,0 +1,9 @@
+fn return_dangling() -> ref i32 {
+    let r = fresh;
+    let num = new 0 at r;
+    let num_loc = loc num;
+    free r;
+}
+fn new_2(base: () @ r) -> i32 {
+    
+}

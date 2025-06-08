@@ -1,0 +1,4 @@
+fn add_5(x: i32) -> i32 {
+    let y = 5 at x;
+    x + y
+}
