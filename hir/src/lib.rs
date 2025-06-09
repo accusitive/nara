@@ -12,8 +12,6 @@ pub struct HirExpression<'hir> {
     pub id: HirId,
 }
 
-
-
 #[derive(Debug)]
 pub enum HirExpressionKind<'hir> {
     NewRegion,
@@ -114,7 +112,10 @@ impl<'hir, 'src> Hir<'hir, 'src> {
             span: expression.span,
             id,
         };
-        self.arena.alloc(e)
+        let a = self.arena.alloc(e);
+        self.expression.insert(id, a);
+
+        a
     }
     fn hir_id(&mut self) -> HirId {
         let id = self.next_id;

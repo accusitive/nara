@@ -8,3 +8,4 @@ parser = {path = "./parser"}
 check = {path = "./check"}
 hir = {path = "./hir"}
 bumpalo = "3.18.1"
+ariadne = "0.5.1"
