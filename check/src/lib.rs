@@ -23,43 +23,54 @@ impl<'src> Check<'src> {
         }
     }
     pub fn check_function_item(&mut self, item: &FunctionItem<'src>) {
-        let effect = self.infer_effect(&item.body);
-        // dbg!(&effect);
-        println!("{}", effect);
+        let effect = self.check_expression(&item.body);
+        println!("{}", effect.unwrap());
     }
-    pub fn infer_effect(&mut self, expression: &Spanned<Expression<'src>>) -> Effect {
+    pub fn check_expression(
+        &mut self,
+        expression: &Spanned<Expression<'src>>,
+    ) -> Result<Effect, CheckerError> {
         match &expression.value {
-            Expression::Value(spanned) => Effect::Bottom,
+            Expression::Value(spanned) => Ok(Effect::Bottom),
             Expression::Block(spanneds) => {
                 let mut effect = Effect::Bottom;
                 let mut i = spanneds.iter();
                 while let Some(next) = i.next() {
-                    effect = Effect::compose(effect, self.infer_effect(next)).unwrap();
+                    effect = Effect::compose(effect, self.check_expression(next)?)?;
                 }
-                effect
+                Ok(effect)
             }
-            Expression::Path(spanned) => Effect::Bottom,
+            Expression::Path(spanned) => Ok(Effect::Bottom),
             Expression::LetIn {
                 binding,
                 init,
                 next,
             } => {
-                let init_effect = self.infer_effect(init.as_ref());
+                let init_effect = self.check_expression(init.as_ref())?;
                 assert!(self.context.insert(binding.value, init_effect).is_none());
 
-                let effect = self.infer_effect(&next);
+                let effect = self.check_expression(&next)?;
                 let init_effect = self.context.remove(binding.value).unwrap();
 
-                Effect::Compose(Box::new(init_effect), Box::new(effect))
+                Ok(Effect::Compose(Box::new(init_effect), Box::new(effect)))
             }
-            Expression::NewRegion => Effect::compose(Effect::Fresh, Effect::Alloc(Size::N(1))).unwrap(),
-            Expression::FreeRegion(spanned) => Effect::Free,
+            Expression::NewRegion => {
+                Ok(Effect::compose(Effect::Fresh, Effect::Alloc(Size::N(1))).unwrap())
+            }
+            Expression::FreeRegion(spanned) => Ok(Effect::Free),
             Expression::Allocate { value, region } => {
-                let inner = self.infer_effect(region);
-                Effect::compose(inner, Effect::Alloc(Size::Unbounded)).unwrap()
+                let inner = self.check_expression(region)?;
+                Ok(Effect::compose(inner, Effect::Alloc(Size::Unbounded)).unwrap())
             }
-            Expression::Reference(spanned) => Effect::Bottom,
-            Expression::Dereference(spanned) => Effect::Bottom,
+            Expression::Reference(spanned) => Ok(Effect::Bottom),
+            Expression::Dereference(expression) => {
+                let v = self.check_expression(&expression)?;
+                if v.is_free() {
+                    Ok(Effect::Bottom)
+                } else {
+                    Err(CheckerError::UseAfterFree)
+                }
+            }
         }
     }
 }
@@ -72,8 +83,9 @@ pub enum Effect {
     Alloc(Size),
 }
 #[derive(Debug, Clone)]
-pub enum ComposeError {
+pub enum CheckerError {
     DoubleFree,
+    UseAfterFree,
 }
 impl Effect {
     pub fn is_free(&self) -> bool {
@@ -83,9 +95,9 @@ impl Effect {
             _ => false,
         }
     }
-    pub fn compose(first: Self, second: Self) -> Result<Self, ComposeError> {
+    pub fn compose(first: Self, second: Self) -> Result<Self, CheckerError> {
         if first.is_free() && matches!(second, Self::Free) {
-            Err(ComposeError::DoubleFree)
+            Err(CheckerError::DoubleFree)
         } else {
             Ok(Self::Compose(Box::new(first), Box::new(second)))
         }

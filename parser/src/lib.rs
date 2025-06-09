@@ -2,12 +2,13 @@ use std::fmt::{Debug, Display, Pointer};
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use ast::TranslationUnit;
-use chumsky::{extra::ParserExtra, input::{Input, MapExtra}, span::{SimpleSpan, Span}, Parser};
+use chumsky::{extra::ParserExtra, input::{Input, MapExtra}, span::{Span}, Parser};
 use lexer::Token;
 
 pub mod ast;
 pub mod lexer;
 pub mod parser;
+pub use chumsky::span::SimpleSpan;
 pub struct Spanned<T> {
     pub value: T,
     pub span: SimpleSpan,
