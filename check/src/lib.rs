@@ -23,55 +23,29 @@ impl<'src> Check<'src> {
         }
     }
     pub fn check_function_item(&mut self, item: &FunctionItem<'src>) {
-        let effect = self.check_expression(&item.body);
-        println!("{}", effect.unwrap());
+        self.generate_constraints(&item.body).unwrap();
     }
-    pub fn check_expression(
+    pub fn generate_constraints(
         &mut self,
         expression: &Spanned<Expression<'src>>,
-    ) -> Result<Effect, CheckerError> {
+    ) -> Result<(), CheckerError> {
         match &expression.value {
-            Expression::Value(spanned) => Ok(Effect::Bottom),
-            Expression::Block(spanneds) => {
-                let mut effect = Effect::Bottom;
-                let mut i = spanneds.iter();
-                while let Some(next) = i.next() {
-                    effect = Effect::compose(effect, self.check_expression(next)?)?;
-                }
-                Ok(effect)
-            }
-            Expression::Path(spanned) => Ok(Effect::Bottom),
-            Expression::LetIn {
-                binding,
-                init,
-                next,
-            } => {
-                let init_effect = self.check_expression(init.as_ref())?;
-                assert!(self.context.insert(binding.value, init_effect).is_none());
-
-                let effect = self.check_expression(&next)?;
-                let init_effect = self.context.remove(binding.value).unwrap();
-
-                Ok(Effect::Compose(Box::new(init_effect), Box::new(effect)))
-            }
+            Expression::Value(spanned) => {},
+            Expression::Block(spanneds) => todo!(),
+            Expression::Path(spanned) => todo!(),
+            Expression::LetIn { binding, init, next } => todo!(),
             Expression::NewRegion => {
-                Ok(Effect::compose(Effect::Fresh, Effect::Alloc(Size::N(1))).unwrap())
-            }
-            Expression::FreeRegion(spanned) => Ok(Effect::Free),
-            Expression::Allocate { value, region } => {
-                let inner = self.check_expression(region)?;
-                Ok(Effect::compose(inner, Effect::Alloc(Size::Unbounded)).unwrap())
-            }
-            Expression::Reference(spanned) => Ok(Effect::Bottom),
-            Expression::Dereference(expression) => {
-                let v = self.check_expression(&expression)?;
-                if v.is_free() {
-                    Ok(Effect::Bottom)
-                } else {
-                    Err(CheckerError::UseAfterFree)
-                }
-            }
+                let t = self.fresh_type_variable();
+                let r = self.fresh_region_variable();
+
+                self.
+            },
+            Expression::FreeRegion(spanned) => todo!(),
+            Expression::Allocate { value, region } => todo!(),
+            Expression::Reference(spanned) => todo!(),
+            Expression::Dereference(spanned) => todo!(),
         }
+        Ok(())
     }
 }
 #[derive(Debug, Clone)]
