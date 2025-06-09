@@ -13,7 +13,7 @@ pub enum Item<'src> {
 pub struct FunctionItem<'src> {
     pub name: Spanned<Identifier<'src>>,
     pub signature: Spanned<FunctionSignature<'src>>,
-    pub body: Spanned<Expression<'src>>
+    pub body: Spanned<Expression<'src>>,
 }
 #[derive(Debug)]
 pub struct FunctionParameter<'src> {
@@ -44,9 +44,20 @@ pub enum Value {
 #[derive(Debug)]
 pub enum Expression<'src> {
     Value(Spanned<Value>),
-    Chain(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    Block(Vec<Spanned<Self>>),
     Path(Spanned<Identifier<'src>>),
-    LetIn{ binding: Spanned<Identifier<'src>>, init: Box<Spanned<Self>>, next: Box<Spanned<Self>>},
+    LetIn {
+        binding: Spanned<Identifier<'src>>,
+        init: Box<Spanned<Self>>,
+        next: Box<Spanned<Self>>,
+    },
     NewRegion,
-    FreeRegion(Box<Spanned<Self>>)
+    FreeRegion(Box<Spanned<Self>>),
+    Allocate {
+        value: Box<Spanned<Value>>,
+        region: Box<Spanned<Self>>,
+    },
+    Reference(Box<Spanned<Self>>),
+    Dereference(Box<Spanned<Self>>)
+
 }

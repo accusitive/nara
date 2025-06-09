@@ -43,6 +43,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "check"
+version = "0.1.0"
+dependencies = [
+ "parser",
+]
+
+[[package]]
 name = "chumsky"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -95,6 +102,7 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 name = "nara"
 version = "0.1.0"
 dependencies = [
+ "check",
  "parser",
 ]
 

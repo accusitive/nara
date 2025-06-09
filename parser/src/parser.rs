@@ -1,4 +1,7 @@
-use chumsky::{input::BorrowInput, prelude::*};
+use chumsky::{
+    input::{BorrowInput, MapExtra},
+    prelude::*,
+};
 
 use crate::{
     Spanned,
@@ -92,13 +95,35 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
         choice((int, function_type))
     });
 
-    let value = select_ref!( Token::Literal(crate::lexer::LiteralTok::Integer(i)) => i)
-        .map_with(|s, e| Spanned::e(Value::Number(*s), e));
     let expression = recursive(|expr| {
-        let value_expr = value.map_with(|v, e| e!(Expression::Value(v), e));
+        let value = select_ref!( Token::Literal(crate::lexer::LiteralTok::Integer(i)) => i)
+            .map_with(
+                |s, e: &mut MapExtra<'_, '_, I, chumsky::extra::Err<Rich<'src, Token<'src>>>>| {
+                    e!(Value::Number(*s), e)
+                },
+            );
         let path = identifier
             .clone()
             .map_with(|v, e| e!(Expression::Path(v), e));
+        let ref_create = just(Token::Punctuation(Punctuation::Ampersand))
+            .ignore_then(expr.clone())
+            .map_with(|p, e| e!(Expression::Reference(Box::new(p)), e));
+        let deref = just(Token::Punctuation(Punctuation::Star))
+            .ignore_then(expr.clone())
+            .map_with(|p, e| e!(Expression::Dereference(Box::new(p)), e));
+        let at = value
+            .then_ignore(just(Token::Keyword(Keyword::At)))
+            .then(path)
+            .map_with(|(value, region), e| {
+                e!(
+                    Expression::Allocate {
+                        value: Box::new(value),
+                        region: Box::new(region)
+                    },
+                    e
+                )
+            });
+
         let let_in_expr = just(Token::Keyword(Keyword::Let))
             .ignore_then(identifier.clone())
             .then_ignore(just(Token::Punctuation(Punctuation::Equal)))
@@ -117,19 +142,20 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
             });
         let newrgn =
             just(Token::Keyword(Keyword::Newrgn)).map_with(|_, e| e!(Expression::NewRegion, e));
-        let endrgn = just(Token::Keyword(Keyword::Freergn))
+        let freergn = just(Token::Keyword(Keyword::Freergn))
             .ignore_then(expr.clone())
             .map_with(|x, e| e!(Expression::FreeRegion(Box::new(x)), e));
 
-        let base_expr = choice((value_expr, path, let_in_expr, newrgn, endrgn));
+        let base_expr = choice((path, let_in_expr, newrgn, freergn, at, ref_create, deref));
 
-        let chained = base_expr
+        let block = base_expr
             .clone()
-            .then_ignore(just(Token::Punctuation(Punctuation::Semicolon)))
-            .then(expr.clone())
-            .map_with(|(e0, e1), e| e!(Expression::Chain(Box::new(e0), Box::new(e1)), e));
+            .separated_by(just(Token::Punctuation(Punctuation::Semicolon)))
+            .collect::<Vec<_>>()
+            .delimited_by(open_bracket!(), close_bracket!())
+            .map_with(|exprs, e| e!(Expression::Block(exprs), e));
 
-        choice((chained, base_expr))
+        choice((block, base_expr))
     });
 
     let parameter = identifier
