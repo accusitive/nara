@@ -9,8 +9,8 @@ pub mod ast;
 pub mod lexer;
 pub mod parser;
 pub struct Spanned<T> {
-    value: T,
-    span: SimpleSpan,
+    pub value: T,
+    pub span: SimpleSpan,
 }
 
 impl<T> Spanned<T> {
