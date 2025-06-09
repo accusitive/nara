@@ -71,11 +71,14 @@ impl<'hir, 'src> Check {
         let region_sub = self.generate_region_substitutions();
         let ty_sub = self.generate_type_substitutions();
 
-        for (_k, v) in self.reg.iter_mut() {
-            *v = Self::apply_region(&region_sub, &v);
+        for r in self.reg.values_mut() {
+            *r = Self::apply_region(&region_sub, &r);
         }
-        for (_k, v) in self.ty.iter_mut() {
-            *v = Self::apply_type(&ty_sub, v);
+        for e in self.effect.values_mut() {
+            *e = Self::apply_effect(&region_sub, e);
+        }
+        for t in self.ty.values_mut() {
+            *t = Self::apply_type(&ty_sub, t);
         }
     }
     pub fn generate_constraints(&mut self, expression: &HirExpression<'hir>) -> Result<(), ()> {
@@ -210,6 +213,22 @@ impl<'hir, 'src> Check {
             _ => r#type.clone(),
         }
     }
+    pub fn apply_effect(sub: &HashMap<usize, Region>, r#effect: &Effect) -> Effect {
+        match r#effect {
+            Effect::Bottom => Effect::Bottom,
+            Effect::Fresh(region) => Effect::Fresh(Self::apply_region(sub, region)),
+            Effect::Free(region) => Effect::Free(Self::apply_region(sub, region)),
+            Effect::Alloc(region) => Effect::Alloc(Self::apply_region(sub, region)),
+            Effect::Sequence(first, second) => Effect::Sequence(
+                Box::new(Self::apply_effect(sub, first)),
+                Box::new(Self::apply_effect(sub, &second)),
+            ),
+        }
+        // match r#type {
+        //     Type::Variable(ty_id) if let Some(s) = sub.get(&ty_id.0) => s.clone(),
+        //     _ => r#type.clone(),
+        // }
+    }
     pub fn unify_region(
         mut sub: HashMap<usize, Region>,
         lhs: &Region,
@@ -238,5 +257,26 @@ impl<'hir, 'src> Check {
             _ => todo!(),
         }
         sub
+    }
+}
+
+impl Display for Effect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Effect::Bottom => write!(f, "⊥"),
+
+            Effect::Sequence(effect, effect1) => match (effect.deref(), effect1.deref()) {
+                (Effect::Bottom, Effect::Bottom) => write!(f, ""),
+
+                (Effect::Bottom, e @ _) | (e @ _, Effect::Bottom) => write!(f, "{}", e),
+
+                (e0 @ _, e1 @ _) => write!(f, "{}, {}", e0, e1),
+            },
+
+            Effect::Alloc(r) => write!(f, "alloc {}", r),
+
+            Effect::Fresh(r) => write!(f, "fresh {}", r),
+            Effect::Free(r) => write!(f, "free {}", r),
+        }
     }
 }

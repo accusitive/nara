@@ -47,17 +47,16 @@ fn main() {
     {
         let mut labels = vec![];
         for (id, t) in ck.ty {
-            if let Some(e) = hir.expression.get(&id) {
-                labels.push(
-                    Label::new(("test.sw", e.span.into_range()))
-                        .with_message(format!("ty: {:?}", t))
-                        .with_color(color(labels.len())),
-                )
-            }
+            let e = hir.expression[&id];
+            labels.push(
+                Label::new(("test.sw", e.span.into_range()))
+                    .with_message(format!("type: {:?}", t))
+                    .with_color(color(labels.len())),
+            )
         }
 
         ariadne::Report::build(
-            ariadne::ReportKind::Custom(&format!(":)"), ariadne::Color::Blue),
+            ariadne::ReportKind::Custom(&format!("ty debugging:"), ariadne::Color::Blue),
             ("test.sw", 0..0),
         )
         .with_config(cfg)
@@ -69,17 +68,37 @@ fn main() {
     {
         let mut labels = vec![];
         for (id, r) in ck.reg {
-            if let Some(e) = hir.expression.get(&id) {
-                labels.push(
-                    Label::new(("test.sw", e.span.into_range()))
-                        .with_message(format!("reg: {}", r))
-                        .with_color(color(labels.len())),
-                )
-            }
+            let e = hir.expression[&id];
+            labels.push(
+                Label::new(("test.sw", e.span.into_range()))
+                    .with_message(format!("region: {}", r))
+                    .with_color(color(labels.len())),
+            )
         }
 
         ariadne::Report::build(
-            ariadne::ReportKind::Custom(&format!(":)"), ariadne::Color::Blue),
+            ariadne::ReportKind::Custom(&format!("region debugging:"), ariadne::Color::Blue),
+            ("test.sw", 0..0),
+        )
+        .with_config(cfg)
+        .with_labels(labels)
+        .finish()
+        .eprint(("test.sw", Source::from(src.to_string())))
+        .unwrap();
+    }
+    {
+        let mut labels = vec![];
+        for (id, effect) in ck.effect {
+            let e = hir.expression[&id];
+            labels.push(
+                Label::new(("test.sw", e.span.into_range()))
+                    .with_message(format!("effect: {}", effect))
+                    .with_color(color(labels.len())),
+            )
+        }
+
+        ariadne::Report::build(
+            ariadne::ReportKind::Custom(&format!("effect debugging:"), ariadne::Color::Blue),
             ("test.sw", 0..0),
         )
         .with_config(cfg)
