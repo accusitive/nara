@@ -37,7 +37,7 @@ pub enum Ty {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Number(i64),
 }

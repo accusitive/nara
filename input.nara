@@ -2,6 +2,6 @@ fn test (a: i32, b: i32) -> i32 {
     let r = newrgn in
     let x = 0 at r in {
         freergn r;
-        *x
+        x
     }
 }

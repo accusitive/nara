@@ -2,7 +2,12 @@ use std::fmt::{Debug, Display, Pointer};
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use ast::TranslationUnit;
-use chumsky::{extra::ParserExtra, input::{Input, MapExtra}, span::{Span}, Parser};
+use chumsky::{
+    Parser,
+    extra::ParserExtra,
+    input::{Input, MapExtra},
+    span::Span,
+};
 use lexer::Token;
 
 pub mod ast;
@@ -13,9 +18,20 @@ pub struct Spanned<T> {
     pub value: T,
     pub span: SimpleSpan,
 }
+impl<T: Clone> Clone for Spanned<T> {
+    fn clone(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+            span: self.span.clone(),
+        }
+    }
+}
 
 impl<T> Spanned<T> {
-    fn e<'a, I: Input<'a, Span = SimpleSpan>, E: ParserExtra<'a, I>>(value: T, span: &mut MapExtra<'a, '_, I, E>) -> Self {
+    fn e<'a, I: Input<'a, Span = SimpleSpan>, E: ParserExtra<'a, I>>(
+        value: T,
+        span: &mut MapExtra<'a, '_, I, E>,
+    ) -> Self {
         Spanned {
             span: span.span(),
             value: value,
