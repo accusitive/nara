@@ -1,6 +1,7 @@
 #![feature(if_let_guard)]
 use std::{collections::HashMap, fmt::Display, ops::Deref};
 
+use ariadne::Report;
 use hir::{Hir, HirExpression, HirId};
 use parser::{
     Spanned,
@@ -65,7 +66,6 @@ impl<'hir, 'src> Check {
     pub fn check_translation_unit(&mut self, hir: &Hir<'hir, 'src>) {
         for f in hir.functions.values() {
             self.generate_constraints(f).unwrap();
-            dbg!(&self.effect[&f.id]);
         }
         let region_sub = self.generate_region_substitutions();
         let ty_sub = self.generate_type_substitutions();
@@ -78,6 +78,10 @@ impl<'hir, 'src> Check {
         }
         for t in self.ty.values_mut() {
             *t = Self::apply_type(&ty_sub, t);
+        }
+        for f in hir.functions.values() {
+            // self.generate_constraints(f).unwrap();
+            self.check_expression(f);
         }
     }
     pub fn generate_constraints(&mut self, expression: &HirExpression<'hir>) -> Result<(), ()> {
@@ -220,13 +224,9 @@ impl<'hir, 'src> Check {
             Effect::Alloc(region) => Effect::Alloc(Self::apply_region(sub, region)),
             Effect::Sequence(first, second) => Effect::Sequence(
                 Box::new(Self::apply_effect(sub, first)),
-                Box::new(Self::apply_effect(sub, &second)),
+                Box::new(Self::apply_effect(sub, second)),
             ),
         }
-        // match r#type {
-        //     Type::Variable(ty_id) if let Some(s) = sub.get(&ty_id.0) => s.clone(),
-        //     _ => r#type.clone(),
-        // }
     }
     pub fn unify_region(
         mut sub: HashMap<usize, Region>,
@@ -257,8 +257,55 @@ impl<'hir, 'src> Check {
         }
         sub
     }
-}
+    pub fn check_expression(&mut self, expr: &HirExpression<'hir>) {
+        match &expr.kind {
+            hir::HirExpressionKind::NewRegion => {}
+            hir::HirExpressionKind::FreeRegion(at) => {
+                self.check_expression(&at);
+                self.ensure_live(expr);
+            }
+            hir::HirExpressionKind::Allocate(spanned, at) => {
+                self.check_expression(&at);
+                self.ensure_live(expr);
+            }
+            hir::HirExpressionKind::Local(hir_id) => {}
+            hir::HirExpressionKind::Block(hir_expressions) => {
+                for expr in hir_expressions {
+                    self.check_expression(&expr);
+                }
+                self.ensure_live(expr);
 
+            }
+            hir::HirExpressionKind::Dereference(hir_expression) => {}
+            hir::HirExpressionKind::LetIn(hir_expression, hir_expression1) => {
+                self.check_expression(&hir_expression);
+                self.check_expression(&hir_expression1);
+
+                self.ensure_live(expr);
+            }
+        }
+    }
+    pub fn ensure_live(&mut self, expr: &HirExpression<'hir>) -> CheckResult<()>{
+        let reg = &self.reg[&expr.id];
+        let eff = &self.effect[&expr.id];
+        if self.is_region_free(reg, eff) {
+            panic!()
+        }
+        Ok(())
+    }
+    pub fn is_region_free(&self, region: &Region, effect: &Effect) -> bool {
+        match effect {
+            Effect::Bottom => false,
+            Effect::Fresh(_) => false,
+            Effect::Alloc(_) => false,
+            Effect::Free(r) => r == region,
+            Effect::Sequence(effect, effect1) => {
+                self.is_region_free(region, effect) || self.is_region_free(region, effect1)
+            }
+        }
+    }
+}
+pub type CheckResult<'a, T> = Result<T, Report<'a>>;
 impl Display for Effect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
