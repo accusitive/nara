@@ -17,7 +17,7 @@ impl Display for Region {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Region::Variable(v) => write!(f, "'{}", v),
-            Region::Global => write!(f, "'static"),
+            Region::Global => write!(f, "'global"),
         }
     }
 }
@@ -63,8 +63,7 @@ impl<'hir, 'src> Check {
         id
     }
     pub fn check_translation_unit(&mut self, hir: &Hir<'hir, 'src>) {
-        // sad that i have to clone here :(
-        for f in hir.functions.clone().values() {
+        for f in hir.functions.values() {
             self.generate_constraints(f).unwrap();
             dbg!(&self.effect[&f.id]);
         }
