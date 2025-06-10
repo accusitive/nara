@@ -1,10 +1,14 @@
 #![feature(if_let_guard)]
-use std::{collections::HashMap, fmt::Display, ops::Deref};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    ops::{Deref, Range},
+};
 
-use ariadne::Report;
+use ariadne::{Label, Report, Source};
 use hir::{Hir, HirExpression, HirId};
 use parser::{
-    Spanned,
+    SimpleSpan, Spanned,
     ast::{Expression, FunctionItem, Item, TranslationUnit},
 };
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -30,6 +34,7 @@ pub struct Check {
     pub effect: HashMap<HirId, Effect>,
     pub ty_constraints: Vec<(Type, Type)>,
     pub reg_constraints: Vec<(Region, Region)>,
+    pub cache: (&'static str, Source),
 }
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -47,7 +52,7 @@ pub enum Type {
 }
 
 impl<'hir, 'src> Check {
-    pub fn new() -> Self {
+    pub fn new(c: (&'static str, Source)) -> Self {
         Self {
             next_id: 0,
             ty: HashMap::new(),
@@ -56,6 +61,7 @@ impl<'hir, 'src> Check {
 
             ty_constraints: vec![],
             reg_constraints: vec![],
+            cache: c,
         }
     }
     fn next_id(&mut self) -> usize {
@@ -80,8 +86,13 @@ impl<'hir, 'src> Check {
             *t = Self::apply_type(&ty_sub, t);
         }
         for f in hir.functions.values() {
-            // self.generate_constraints(f).unwrap();
-            self.check_expression(f);
+            match self.check_expression(f) {
+                Ok(_) => {}
+                Err(e) => {
+                    e.eprint(self.cache.clone()).unwrap();
+                    // panic!()
+                }
+            }
         }
     }
     pub fn generate_constraints(&mut self, expression: &HirExpression<'hir>) -> Result<(), ()> {
@@ -134,7 +145,7 @@ impl<'hir, 'src> Check {
 
                 self.effect.insert(expression.id, effect);
 
-                self.reg_constraints.push((expr_reg_id, at_region))
+                self.reg_constraints.push((expr_reg_id, at_region));
             }
             hir::HirExpressionKind::Local(hir_id) => {
                 self.ty_constraints
@@ -257,39 +268,44 @@ impl<'hir, 'src> Check {
         }
         sub
     }
-    pub fn check_expression(&mut self, expr: &HirExpression<'hir>) {
+    pub fn is_expr_alive(&mut self, expression: &HirExpression<'hir>) -> bool {
+        let reg = &self.reg[&expression.id];
+        let eff = &self.effect[&expression.id];
+
+        !self.is_region_free(reg, eff)
+    }
+    // Check for memory errors
+    pub fn check_expression<'a, 'b>(
+        &'a mut self,
+        expr: &'hir HirExpression<'hir>,
+    ) -> CheckResult<'b, ()> {
+        if !self.is_expr_alive(expr) {
+            return Err(Report::build(ariadne::ReportKind::Error, ("test.sw", 0..0))
+                .with_label(Label::new(("test.sw", expr.span.into())).with_message("dead"))
+                .finish());
+        }
+
         match &expr.kind {
-            hir::HirExpressionKind::NewRegion => {}
+            hir::HirExpressionKind::NewRegion => {
+                // creating a new region is always safe
+            }
             hir::HirExpressionKind::FreeRegion(at) => {
-                self.check_expression(&at);
-                self.ensure_live(expr);
+                self.check_expression(&at)?;
             }
             hir::HirExpressionKind::Allocate(spanned, at) => {
-                self.check_expression(&at);
-                self.ensure_live(expr);
+                self.check_expression(&at)?;
             }
             hir::HirExpressionKind::Local(hir_id) => {}
-            hir::HirExpressionKind::Block(hir_expressions) => {
-                for expr in hir_expressions {
-                    self.check_expression(&expr);
+            hir::HirExpressionKind::Block(block_items) => {
+                for expr in block_items {
+                    self.check_expression(&expr)?;
                 }
-                self.ensure_live(expr);
-
             }
             hir::HirExpressionKind::Dereference(hir_expression) => {}
-            hir::HirExpressionKind::LetIn(hir_expression, hir_expression1) => {
-                self.check_expression(&hir_expression);
-                self.check_expression(&hir_expression1);
-
-                self.ensure_live(expr);
+            hir::HirExpressionKind::LetIn(init, next) => {
+                self.check_expression(&init)?;
+                self.check_expression(&next)?;
             }
-        }
-    }
-    pub fn ensure_live(&mut self, expr: &HirExpression<'hir>) -> CheckResult<()>{
-        let reg = &self.reg[&expr.id];
-        let eff = &self.effect[&expr.id];
-        if self.is_region_free(reg, eff) {
-            panic!()
         }
         Ok(())
     }
@@ -305,7 +321,7 @@ impl<'hir, 'src> Check {
         }
     }
 }
-pub type CheckResult<'a, T> = Result<T, Report<'a>>;
+pub type CheckResult<'a, T> = Result<T, Report<'a, (&'static str, Range<usize>)>>;
 impl Display for Effect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

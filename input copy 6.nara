@@ -1,0 +1,10 @@
+fn test (a: i32, b: i32) -> i32 {
+    let x = newrgn in {
+        let y = 0 at x in 
+        let z = 0 at x in {
+            10 at x;
+            10 at x;
+            freergn x
+        }
+    }
+}

@@ -26,11 +26,13 @@ fn main() {
             }
         }
     }
-    dbg!(&hir);
-    let mut ck = Check::new();
+    let mut cache = ("test.sw", Source::from(src.to_string()));
+
+    // dbg!(&hir);
+    let mut ck = Check::new(cache.clone());
     ck.check_translation_unit(&hir);
-    dbg!(&ck.reg);
-    dbg!(&ck.ty);
+    // dbg!(&ck.reg);
+    // dbg!(&ck.ty);
     let cfg = Config::new()
         .with_compact(false)
         .with_cross_gap(false)
@@ -44,6 +46,7 @@ fn main() {
         5 => Color::Yellow,
         _ => Color::White,
     };
+
     {
         let mut labels = vec![];
         for (id, t) in ck.ty {
@@ -62,7 +65,7 @@ fn main() {
         .with_config(cfg)
         .with_labels(labels)
         .finish()
-        .eprint(("test.sw", Source::from(src.to_string())))
+        .eprint(&mut cache)
         .unwrap();
     }
     {
@@ -83,7 +86,7 @@ fn main() {
         .with_config(cfg)
         .with_labels(labels)
         .finish()
-        .eprint(("test.sw", Source::from(src.to_string())))
+        .eprint(&mut cache)
         .unwrap();
     }
     {
@@ -104,7 +107,7 @@ fn main() {
         .with_config(cfg)
         .with_labels(labels)
         .finish()
-        .eprint(("test.sw", Source::from(src.to_string())))
+        .eprint(&mut cache)
         .unwrap();
     }
 }
