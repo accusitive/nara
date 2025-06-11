@@ -1,6 +1,6 @@
 #![feature(if_let_guard)]
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Display,
     ops::{Deref, Range},
 };
@@ -35,6 +35,8 @@ pub struct Check {
     pub ty_constraints: Vec<(Type, Type)>,
     pub reg_constraints: Vec<(Region, Region)>,
     pub cache: (&'static str, Source),
+
+    pub dead: HashMap<Region, SimpleSpan>,
 }
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -62,6 +64,8 @@ impl<'hir, 'src> Check {
             ty_constraints: vec![],
             reg_constraints: vec![],
             cache: c,
+
+            dead: HashMap::new(),
         }
     }
     fn next_id(&mut self) -> usize {
@@ -90,7 +94,7 @@ impl<'hir, 'src> Check {
                 Ok(_) => {}
                 Err(e) => {
                     e.eprint(self.cache.clone()).unwrap();
-                    // panic!()
+                    panic!()
                 }
             }
         }
@@ -268,22 +272,22 @@ impl<'hir, 'src> Check {
         }
         sub
     }
-    pub fn is_expr_alive(&mut self, expression: &HirExpression<'hir>) -> bool {
-        let reg = &self.reg[&expression.id];
-        let eff = &self.effect[&expression.id];
+    // pub fn is_expr_alive(&mut self, expression: &HirExpression<'hir>) -> bool {
+    //     let reg = &self.reg[&expression.id];
+    //     let eff = &self.effect[&expression.id];
 
-        !self.is_region_free(reg, eff)
-    }
+    //     !self.is_region_free(reg, eff)
+    // }
     // Check for memory errors
     pub fn check_expression<'a, 'b>(
         &'a mut self,
         expr: &'hir HirExpression<'hir>,
     ) -> CheckResult<'b, ()> {
-        if !self.is_expr_alive(expr) {
-            return Err(Report::build(ariadne::ReportKind::Error, ("test.sw", 0..0))
-                .with_label(Label::new(("test.sw", expr.span.into())).with_message("dead"))
-                .finish());
-        }
+        // if !self.is_expr_alive(expr) {
+        //     return Err(Report::build(ariadne::ReportKind::Error, ("test.sw", 0..0))
+        //         .with_label(Label::new(("test.sw", expr.span.into())).with_message("dead"))
+        //         .finish());
+        // }
 
         match &expr.kind {
             hir::HirExpressionKind::NewRegion => {
@@ -291,9 +295,17 @@ impl<'hir, 'src> Check {
             }
             hir::HirExpressionKind::FreeRegion(at) => {
                 self.check_expression(&at)?;
+                let r = self.reg[&at.id];
+                self.dead.insert(r, expr.span);
             }
             hir::HirExpressionKind::Allocate(spanned, at) => {
                 self.check_expression(&at)?;
+                if let Some(freed_at) = self.dead.get(&self.reg[&at.id]) {
+                    return Err(Report::build(ariadne::ReportKind::Error, ("test.sw", 0..0))
+                        .with_label(Label::new(("test.sw", at.span.into())).with_priority(1).with_message("trying to allocate at this expression which has region that has been freed"))
+                        .with_label(Label::new(("test.sw", (*freed_at).into())).with_priority(0).with_message("Freed here"))
+                        .finish());
+                }
             }
             hir::HirExpressionKind::Local(hir_id) => {}
             hir::HirExpressionKind::Block(block_items) => {
@@ -309,17 +321,17 @@ impl<'hir, 'src> Check {
         }
         Ok(())
     }
-    pub fn is_region_free(&self, region: &Region, effect: &Effect) -> bool {
-        match effect {
-            Effect::Bottom => false,
-            Effect::Fresh(_) => false,
-            Effect::Alloc(_) => false,
-            Effect::Free(r) => r == region,
-            Effect::Sequence(effect, effect1) => {
-                self.is_region_free(region, effect) || self.is_region_free(region, effect1)
-            }
-        }
-    }
+    // pub fn is_region_free(&self, region: &Region, effect: &Effect) -> bool {
+    //     match effect {
+    //         Effect::Bottom => false,
+    //         Effect::Fresh(_) => false,
+    //         Effect::Alloc(_) => false,
+    //         Effect::Free(r) => r == region,
+    //         Effect::Sequence(effect, effect1) => {
+    //             self.is_region_free(region, effect) || self.is_region_free(region, effect1)
+    //         }
+    //     }
+    // }
 }
 pub type CheckResult<'a, T> = Result<T, Report<'a, (&'static str, Range<usize>)>>;
 impl Display for Effect {
