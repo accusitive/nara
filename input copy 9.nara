@@ -1,0 +1,5 @@
+fn test (a: i32, b: i32) -> i32 {
+    let arena = newrgn in {
+        10 at arena; freergn arena
+    }
+}

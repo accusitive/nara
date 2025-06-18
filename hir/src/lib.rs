@@ -21,6 +21,7 @@ pub enum HirExpressionKind<'hir> {
     Block(Vec<&'hir HirExpression<'hir>>),
     Dereference(&'hir HirExpression<'hir>),
     LetIn(&'hir HirExpression<'hir>, &'hir HirExpression<'hir>),
+    Reference(&'hir HirExpression<'hir>)
 }
 #[derive(Debug)]
 pub struct Hir<'hir, 'src> {
@@ -102,7 +103,9 @@ impl<'hir, 'src> Hir<'hir, 'src> {
             Expression::Allocate { value, region } => {
                 HirExpressionKind::Allocate(value.deref().clone(), self.lower_expression(region))
             }
-            Expression::Reference(spanned) => todo!(),
+            Expression::Reference(spanned) => {
+                HirExpressionKind::Reference(self.lower_expression(&spanned))
+            }
             Expression::Dereference(spanned) => {
                 HirExpressionKind::Dereference(self.lower_expression(&spanned))
             }

@@ -28,15 +28,16 @@ fn main() {
     }
     let mut cache = ("test.sw", Source::from(src.to_string()));
 
-    // dbg!(&hir);
     let mut ck = Check::new(cache.clone());
-    ck.check_translation_unit(&hir);
-    // dbg!(&ck.reg);
-    // dbg!(&ck.ty);
+    
+    ck.generate_all_constraints(&hir);
+
     let cfg = Config::new()
         .with_compact(false)
         .with_cross_gap(false)
+        .with_label_attach(ariadne::LabelAttach::End)
         .with_char_set(ariadne::CharSet::Ascii);
+
     let color = |n: usize| match n % 6 {
         0 => Color::Red,
         1 => Color::Green,
@@ -49,7 +50,7 @@ fn main() {
 
     {
         let mut labels = vec![];
-        for (id, t) in ck.ty {
+        for (id, t) in &ck.ty {
             let e = hir.expression[&id];
             labels.push(
                 Label::new(("test.sw", e.span.into_range()))
@@ -70,7 +71,7 @@ fn main() {
     }
     {
         let mut labels = vec![];
-        for (id, r) in ck.reg {
+        for (id, r) in &ck.reg {
             let e = hir.expression[&id];
             labels.push(
                 Label::new(("test.sw", e.span.into_range()))
@@ -91,7 +92,7 @@ fn main() {
     }
     {
         let mut labels = vec![];
-        for (id, effect) in ck.effect {
+        for (id, effect) in &ck.eff {
             let e = hir.expression[&id];
             labels.push(
                 Label::new(("test.sw", e.span.into_range()))
@@ -110,4 +111,10 @@ fn main() {
         .eprint(&mut cache)
         .unwrap();
     }
+    for report in &ck.check_translation_unit(&hir) {
+        report.eprint(cache.clone());
+    }
+    // for report in &reports {
+    //     report.eprint(ck.cache.clone());
+    // }
 }
