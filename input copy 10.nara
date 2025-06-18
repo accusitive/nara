@@ -1,0 +1,13 @@
+fn test (a: i32, b: i32) -> i32 {
+    let arena = newrgn in {
+        let v = 10 at arena in {
+            freergn arena;
+            freergn arena;
+            let vr = &v in {
+                *vr;
+                *vr
+            };
+            freergn arena
+        }
+    }
+}

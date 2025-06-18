@@ -37,8 +37,7 @@ pub struct Check {
     pub reg_constraints: Vec<(Region, Region)>,
 
     pub cache: (&'static str, Source),
-
-    pub dead: HashMap<Region, SimpleSpan>,
+    // pub dead: HashMap<Region, SimpleSpan>,
 }
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -67,8 +66,6 @@ impl<'hir, 'src> Check {
             ty_constraints: vec![],
             reg_constraints: vec![],
             cache: c,
-
-            dead: HashMap::new(),
         }
     }
     fn next_id(&mut self) -> usize {
@@ -311,38 +308,66 @@ impl<'hir, 'src> Check {
         }
         sub
     }
-    // Check for memory errors
+    // fn is_dead(&self, e: &Effect, r: &Region) -> bool {
+    //     match e {
+    //         Effect::Bottom => false,
+    //         Effect::Fresh(_) => false,
+    //         Effect::Alloc(_) => false,
+    //         Effect::Free(Region::Global) => false,
+    //         Effect::Free(region) => region == r,
+    //         Effect::Sequence(head, tail) => {
+    //             self.is_dead(&head, r) || self.is_dead(&tail, r)
+    //         }
+    //     }
+    // }
+    fn check_effects<'a>(
+        &self,
+        freed: &mut HashSet<&'a Region>,
+        e: &'a Effect,
+    ) -> Result<(), &'static str> {
+        match e {
+            Effect::Bottom => Ok(()),
+            Effect::Fresh(_) => Ok(()),
+            Effect::Free(region) => {
+                if !freed.insert(region) {
+                    Err("double free")
+                } else {
+                    Ok(())
+                }
+            }
+            Effect::Alloc(region) => {
+                if freed.contains(region) {
+                    Err("Allocate after free")
+                } else {
+                    Ok(())
+                }
+            }
+            Effect::Sequence(head, tail) => {
+                self.check_effects(freed, &head)?;
+                self.check_effects(freed, &tail)?;
+
+                Ok(())
+            }
+        }
+    }
+    // Recursively walk the expression tree and check for memory errors
     pub fn check_expression<'a, 'b>(
         &'a mut self,
         expr: &'hir HirExpression<'hir>,
     ) -> CheckResult<'b, ()> {
+        {
+            let mut freed_set = HashSet::new();
+            self.check_effects(&mut freed_set, &self.eff[&expr.id])
+                .unwrap();
+        }
+
         match &expr.kind {
-            hir::HirExpressionKind::NewRegion => {
-                // creating a new region is always safe
-            }
+            hir::HirExpressionKind::NewRegion => {}
             hir::HirExpressionKind::FreeRegion(at) => {
                 self.check_expression(&at)?;
-                let r = self.reg[&at.id];
-                if let Some(freed_at) = self.dead.insert(r, expr.span) {
-                    return Err(Report::build(ariadne::ReportKind::Error, ("test.sw", 0..0))
-                        .with_label(
-                            Label::new(("test.sw", at.span.into()))
-                                .with_message("cannot free a dead region"),
-                        )
-                        .with_label(
-                            Label::new(("test.sw", freed_at.into())).with_message("freed here"),
-                        )
-                        .finish());
-                }
             }
             hir::HirExpressionKind::Allocate(value, at) => {
                 self.check_expression(&at)?;
-                if let Some(freed_at) = self.dead.get(&self.reg[&at.id]) {
-                    return Err(Report::build(ariadne::ReportKind::Error, ("test.sw", 0..0))
-                                .with_label(Label::new(("test.sw", at.span.into())).with_message("trying to allocate at this expression which has region that has been freed"))
-                                .with_label(Label::new(("test.sw", (*freed_at).into())).with_message("freed here"))
-                                .finish());
-                }
             }
             hir::HirExpressionKind::Local(hir_id) => {}
             hir::HirExpressionKind::Block(block_items) => {
@@ -351,22 +376,7 @@ impl<'hir, 'src> Check {
                 }
             }
             hir::HirExpressionKind::Dereference(hir_expression) => {
-                if let Some(freed_at) = self.dead.get(&self.reg[&hir_expression.id]) {
-                    return Err(Report::build(ariadne::ReportKind::Error, ("test.sw", 0..0))
-                        .with_label(
-                            Label::new(("test.sw", hir_expression.span.into()))
-                                .with_message("this expression belongs to a dead region"),
-                        )
-                        .with_label(
-                            Label::new(("test.sw", expr.span.into()))
-                                .with_message("dereferenced here"),
-                        )
-                        .with_label(
-                            Label::new(("test.sw", (*freed_at).into()))
-                                .with_message("region freed here"),
-                        )
-                        .finish());
-                }
+                self.check_expression(&hir_expression)?;
             }
             hir::HirExpressionKind::LetIn(init, next) => {
                 self.check_expression(&init)?;
