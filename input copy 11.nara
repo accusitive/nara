@@ -1,0 +1,7 @@
+fn test () -> i32 {
+    let r = newrgn in {
+        10 at r;
+        freergn r;
+        freergn r
+    }
+}

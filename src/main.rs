@@ -29,7 +29,7 @@ fn main() {
     let mut cache = ("test.sw", Source::from(src.to_string()));
 
     let mut ck = Check::new(cache.clone());
-    
+
     ck.generate_all_constraints(&hir);
 
     let cfg = Config::new()
@@ -112,9 +112,67 @@ fn main() {
         .unwrap();
     }
     for report in &ck.check_translation_unit(&hir) {
-        report.eprint(cache.clone());
+        report.eprint(cache.clone()).unwrap();
     }
     // for report in &reports {
     //     report.eprint(ck.cache.clone());
     // }
+}
+
+#[test]
+#[should_panic]
+fn double_free() {
+    let src = include_str!("../testcases/double_free.nara");
+    let tokens = lex(src).unwrap();
+    let ast = parse_string(&tokens, src).unwrap();
+
+    let mut hir = hir::Hir {
+        arena: &Bump::new(),
+        next_id: 0,
+        functions: HashMap::new(),
+        expression: HashMap::new(),
+        scopes: vec![Scope::new()],
+    };
+    for item in ast.value.items {
+        match item.value {
+            parser::ast::Item::Function(function_item) => {
+                hir.lower_function(&function_item);
+            }
+        }
+    }
+    let cache = ("test.sw", Source::from(src.to_string()));
+
+    let mut ck = Check::new(cache.clone());
+
+    ck.generate_all_constraints(&hir);
+    ck.check_translation_unit(&hir);
+}
+
+#[test]
+#[should_panic]
+fn use_after_free() {
+    let src = include_str!("../testcases/use_after_free.nara");
+    let tokens = lex(src).unwrap();
+    let ast = parse_string(&tokens, src).unwrap();
+
+    let mut hir = hir::Hir {
+        arena: &Bump::new(),
+        next_id: 0,
+        functions: HashMap::new(),
+        expression: HashMap::new(),
+        scopes: vec![Scope::new()],
+    };
+    for item in ast.value.items {
+        match item.value {
+            parser::ast::Item::Function(function_item) => {
+                hir.lower_function(&function_item);
+            }
+        }
+    }
+    let cache = ("test.sw", Source::from(src.to_string()));
+
+    let mut ck = Check::new(cache.clone());
+
+    ck.generate_all_constraints(&hir);
+    ck.check_translation_unit(&hir);
 }

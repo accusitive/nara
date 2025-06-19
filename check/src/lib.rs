@@ -308,18 +308,13 @@ impl<'hir, 'src> Check {
         }
         sub
     }
-    // fn is_dead(&self, e: &Effect, r: &Region) -> bool {
-    //     match e {
-    //         Effect::Bottom => false,
-    //         Effect::Fresh(_) => false,
-    //         Effect::Alloc(_) => false,
-    //         Effect::Free(Region::Global) => false,
-    //         Effect::Free(region) => region == r,
-    //         Effect::Sequence(head, tail) => {
-    //             self.is_dead(&head, r) || self.is_dead(&tail, r)
-    //         }
-    //     }
-    // }
+    fn is_dead(&self, e: &Effect, r: &Region) -> bool {
+        match e {
+            Effect::Free(region) if region == r => true,
+            Effect::Sequence(head, tail) => self.is_dead(&head, r) || self.is_dead(&tail, r),
+            _ => false,
+        }
+    }
     fn check_effects<'a>(
         &self,
         freed: &mut HashSet<&'a Region>,
@@ -351,10 +346,10 @@ impl<'hir, 'src> Check {
         }
     }
     // Recursively walk the expression tree and check for memory errors
-    pub fn check_expression<'a, 'b>(
-        &'a mut self,
+    pub fn check_expression<'a>(
+        &mut self,
         expr: &'hir HirExpression<'hir>,
-    ) -> CheckResult<'b, ()> {
+    ) -> CheckResult<'a, ()> {
         {
             let mut freed_set = HashSet::new();
             self.check_effects(&mut freed_set, &self.eff[&expr.id])
@@ -377,6 +372,23 @@ impl<'hir, 'src> Check {
             }
             hir::HirExpressionKind::Dereference(hir_expression) => {
                 self.check_expression(&hir_expression)?;
+                {
+                    let mut freed_set = HashSet::new();
+                    self.check_effects(&mut freed_set, &self.eff[&hir_expression.id])
+                        .unwrap();
+                    let r = &self.reg[&hir_expression.id];
+                    if freed_set.contains(r) {
+                        panic!();
+                    }
+                    dbg!(freed_set);
+                    panic!();
+                }
+
+                // let region = self.reg[&hir_expression.id];
+                // let effect = &self.eff[&hir_expression.id];
+                // if self.is_dead(effect, &region) {
+                //     panic!()
+                // }
             }
             hir::HirExpressionKind::LetIn(init, next) => {
                 self.check_expression(&init)?;
