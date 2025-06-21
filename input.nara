@@ -1,8 +1,8 @@
 fn test () -> i32 {
     let region = newrgn in {
         let r = &10 at region in {
-           freergn region;
-           *r
+            freergn region;
+            freergn region
         }
     }
 }

@@ -31,6 +31,7 @@ fn main() {
     let mut ck = Check::new(cache.clone());
 
     ck.generate_all_constraints(&hir);
+    ck.unify_all_constraints();
 
     let cfg = Config::new()
         .with_compact(false)
@@ -111,12 +112,6 @@ fn main() {
         .eprint(&mut cache)
         .unwrap();
     }
-    for report in &ck.check_translation_unit(&hir) {
-        report.eprint(cache.clone()).unwrap();
-    }
-    // for report in &reports {
-    //     report.eprint(ck.cache.clone());
-    // }
 }
 
 #[test]
@@ -145,7 +140,7 @@ fn double_free() {
     let mut ck = Check::new(cache.clone());
 
     ck.generate_all_constraints(&hir);
-    ck.check_translation_unit(&hir);
+    ck.unify_all_constraints();
 }
 
 #[test]
@@ -174,5 +169,5 @@ fn use_after_free() {
     let mut ck = Check::new(cache.clone());
 
     ck.generate_all_constraints(&hir);
-    ck.check_translation_unit(&hir);
+    ck.unify_all_constraints();
 }
