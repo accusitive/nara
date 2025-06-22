@@ -1,7 +1,10 @@
-fn region_reuse_trick () -> i32 {
-    let r1 = newrgn in {
-        let v = 42 at r1 in {
-            freergn r1
+fn safe_basic () -> i32 {
+    let r = newrgn in {
+        let x = &100 at r in {
+            let y = *x in {
+                freergn r;
+                y
+            }
         }
     }
 }

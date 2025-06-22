@@ -1,0 +1,19 @@
+type Person {
+    age: Int,
+    id: Int
+}
+fn new_person<'a>() -> &'a Person @ 'a {
+    new('a) Person {
+        age: 42,
+        id: 0
+    }
+}
+
+fn main: () -> void { // call this '0
+    let arena = new_arena(); // -> ((), 'arena)
+    { // call this '1
+        let local_person = new_person(); // new_person::<'1>();
+        let another_local_person = new_person<local_person>(); // new_person::<'1>();
+    }
+    let arena_person = new_person<arena>(); // new_person::<'arena>();
+}
