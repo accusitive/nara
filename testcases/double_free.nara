@@ -1,4 +1,4 @@
-fn test () -> i32 {
+fn double_free() -> i32 {
     let r = newrgn in {
         10 at r;
         freergn r;

@@ -1,0 +1,12 @@
+fn test () -> i32 {
+    let region = newrgn in {
+    let r = &10 at region in {
+    freergn region;
+    let region2 = newrgn in {
+    let rr = &r in {
+        0 at region
+    }
+    }
+    }
+    }
+}

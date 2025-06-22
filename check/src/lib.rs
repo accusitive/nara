@@ -1,16 +1,13 @@
 #![feature(if_let_guard)]
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::Display,
     ops::{Deref, Range},
 };
 
-use ariadne::{Label, Report, Source};
+use ariadne::{Config, Label, Report, Source};
 use hir::{Hir, HirExpression, HirId};
-use parser::{
-    SimpleSpan, Spanned,
-    ast::{Expression, FunctionItem, Item, TranslationUnit},
-};
+use parser::SimpleSpan;
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TyId(usize);
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -27,58 +24,85 @@ impl Display for Region {
     }
 }
 #[derive(Debug)]
-pub struct Check {
+pub struct Check<'a> {
     pub next_id: usize,
+
     pub ty: HashMap<HirId, Type>,
-    pub reg: HashMap<HirId, Region>,
-    pub eff: HashMap<HirId, Effect>,
+    pub place_map: HashMap<HirId, Region>,
+    pub effect_map: HashMap<HirId, Effect>,
 
     pub ty_constraints: Vec<(Type, Type)>,
     pub reg_constraints: Vec<(Region, Region)>,
-    pub live: Vec<(Region, Effect)>,
+    pub live_constraints: Vec<LivenessConstraint>,
 
     pub cache: (&'static str, Source),
+    pub config: Config,
+
+    pub diagnostics: Vec<Report<'a, (&'a str, Range<usize>)>>,
+}
+#[derive(Debug)]
+pub struct LivenessConstraint {
+    effect: Effect,
+    region: Region,
+    span: SimpleSpan,
+    kind: LivenessConstraintKind,
+}
+#[derive(Debug)]
+pub enum LivenessConstraintKind {
+    TakeRef,
+    UseRef,
+    Alloc,
+    Free,
+    Dangling,
 }
 #[derive(Debug, Clone)]
 pub enum Effect {
     Bottom,
     Fresh(Region),
-    Free(Region),
+    Free(Region, SimpleSpan),
     Alloc(Region),
     Sequence(Box<Effect>, Box<Effect>),
 }
+#[derive(Debug)]
+pub enum LivenessResult<'a> {
+    Live,
+    Dead(&'a SimpleSpan),
+}
 impl Effect {
-    pub fn is_region_dead(&self, region: &Region) -> bool {
+    pub fn is_region_dead(&self, region: &Region) -> LivenessResult {
         match self {
-            Effect::Free(r) if region == r => true,
-            Effect::Sequence(head, tail) => {
-                head.is_region_dead(region) || tail.is_region_dead(region)
-            }
-            _ => false,
+            Effect::Free(r, s) if region == r => LivenessResult::Dead(s),
+            Effect::Sequence(head, tail) => match head.is_region_dead(region) {
+                LivenessResult::Live => tail.is_region_dead(region),
+                d @ LivenessResult::Dead(..) => d,
+            },
+            _ => LivenessResult::Live,
         }
     }
 }
 #[derive(Debug, Clone)]
 pub enum Type {
     Reference(Box<Type>),
-    Variable(TyId),
+    InferenceVariable(TyId),
     Int,
     Unit,
 }
 
-impl<'hir, 'src> Check {
-    pub fn new(c: (&'static str, Source)) -> Self {
+impl<'hir, 'src> Check<'_> {
+    pub fn new(cache: (&'static str, Source), config: Config) -> Self {
         Self {
             next_id: 0,
             ty: HashMap::new(),
-            reg: HashMap::new(),
-            eff: HashMap::new(),
+            place_map: HashMap::new(),
+            effect_map: HashMap::new(),
 
             ty_constraints: vec![],
             reg_constraints: vec![],
-            live: vec![],
+            live_constraints: vec![],
 
-            cache: c,
+            cache,
+            config,
+            diagnostics: vec![],
         }
     }
     fn next_id(&mut self) -> usize {
@@ -87,37 +111,81 @@ impl<'hir, 'src> Check {
         id
     }
     pub fn generate_all_constraints(&mut self, hir: &Hir<'hir, 'src>) {
-        for f in hir.functions.values() {
-            let base = Effect::Bottom;
-            self.generate_constraints(&base, f).unwrap();
+        for expr in hir.functions.values() {
+            self.generate_constraints(&Effect::Bottom, expr).unwrap();
+
+            self.live_constraints.push(LivenessConstraint {
+                effect: self.effect_map[&expr.id].clone(),
+                region: self.place_map[&expr.id],
+                span: expr.span,
+                kind: LivenessConstraintKind::Dangling,
+            });
         }
     }
     pub fn unify_all_constraints(&mut self) {
         let region_sub = self.generate_region_substitutions();
         let ty_sub = self.generate_type_substitutions();
 
-        for r in self.reg.values_mut() {
-            *r = Self::apply_region(&region_sub, &r);
+        for r in self.place_map.values_mut() {
+            *r = Self::apply_region(&region_sub, r);
         }
-        for e in self.eff.values_mut() {
+        for e in self.effect_map.values_mut() {
             *e = Self::apply_effect(&region_sub, e);
         }
+        for LivenessConstraint { region, effect, .. } in self.live_constraints.iter_mut() {
+            *region = Self::apply_region(&region_sub, region);
+            *effect = Self::apply_effect(&region_sub, effect);
+        }
+
         for t in self.ty.values_mut() {
             *t = Self::apply_type(&ty_sub, t);
         }
-        for (r, e) in self.live.iter_mut() {
-            *r = Self::apply_region(&region_sub, &r);
-            *e = Self::apply_effect(&region_sub, e);
-        }
-
-        self.check_liveness();
     }
     pub fn check_liveness(&mut self) {
-        for (region, effect) in &self.live {
-            dbg!(&region, &effect);
-            if effect.is_region_dead(region) {
-                
-                panic!();
+        for LivenessConstraint {
+            region,
+            effect,
+            span,
+            kind,
+        } in &self.live_constraints
+        {
+            // dbg!(&region, &effect);
+            match effect.is_region_dead(region) {
+                LivenessResult::Live => {}
+                LivenessResult::Dead(simple_span) => {
+                    let label_content = match kind {
+                        LivenessConstraintKind::TakeRef => "Cannot take reference to freed memory",
+                        LivenessConstraintKind::UseRef => {
+                            "Cannot dereference a pointer belonging in freed memory"
+                        }
+                        LivenessConstraintKind::Alloc => {
+                            "Cannot allocate into a region which has been freed"
+                        }
+                        LivenessConstraintKind::Free => {
+                            "Cannot free a region that has already been freed"
+                        }
+                        LivenessConstraintKind::Dangling => {
+                            "Cannot return a reference to a region that has been freed"
+                        },
+                    };
+                    self.diagnostics.push(
+                        Report::build(
+                            ariadne::ReportKind::Error,
+                            (self.cache.0, span.into_range()),
+                        )
+                        .with_message("memory safety issues")
+                        .with_label(
+                            Label::new((self.cache.0, span.into_range()))
+                                .with_message(label_content),
+                        )
+                        .with_label(
+                            Label::new((self.cache.0, simple_span.into_range()))
+                                .with_message("region freed here"),
+                        )
+                        .with_config(self.config)
+                        .finish(),
+                    );
+                }
             }
         }
     }
@@ -129,90 +197,106 @@ impl<'hir, 'src> Check {
         let ty_var = TyId(self.next_id());
         let reg_var = Region::Variable(self.next_id());
 
-        self.ty.insert(expression.id, Type::Variable(ty_var));
-        self.reg.insert(expression.id, reg_var);
+        self.ty
+            .insert(expression.id, Type::InferenceVariable(ty_var));
+        self.place_map.insert(expression.id, reg_var);
 
         let effect = match &expression.kind {
             hir::HirExpressionKind::NewRegion => {
                 let total_effect = incoming.clone(); // just for consistency
 
                 self.ty_constraints
-                    .push((Type::Variable(ty_var), Type::Unit));
+                    .push((Type::InferenceVariable(ty_var), Type::Unit));
 
                 let sub_effect = Effect::Sequence(
                     Box::new(Effect::Fresh(reg_var)),
                     Box::new(Effect::Alloc(reg_var)), // 1 byte allocation for the "handle"
                 );
 
-                self.eff.insert(expression.id, sub_effect.clone());
+                self.effect_map.insert(expression.id, sub_effect.clone());
                 Effect::Sequence(Box::new(total_effect), Box::new(sub_effect))
             }
             hir::HirExpressionKind::FreeRegion(at) => {
                 let total_effect = self.generate_constraints(incoming, &at)?;
 
                 self.ty_constraints
-                    .push((Type::Variable(ty_var), Type::Unit));
+                    .push((Type::InferenceVariable(ty_var), Type::Unit));
                 self.reg_constraints.push((reg_var, Region::Global));
 
-                let at_effect = self.eff[&at.id].clone();
-                let at_region = self.reg[&at.id];
-                self.live.push((at_region, total_effect.clone()));
+                let at_effect = self.effect_map[&at.id].clone();
+                let at_region = self.place_map[&at.id];
 
-                let sub_effect =
-                    Effect::Sequence(Box::new(at_effect), Box::new(Effect::Free(at_region)));
+                self.live_constraints.push(LivenessConstraint {
+                    region: at_region,
+                    effect: total_effect.clone(),
+                    span: at.span,
+                    kind: LivenessConstraintKind::Free,
+                });
 
-                self.eff.insert(expression.id, sub_effect.clone());
+                let sub_effect = Effect::Sequence(
+                    Box::new(at_effect),
+                    Box::new(Effect::Free(at_region, expression.span)),
+                );
+
+                self.effect_map.insert(expression.id, sub_effect.clone());
                 Effect::Sequence(Box::new(total_effect), Box::new(sub_effect))
             }
             hir::HirExpressionKind::Allocate(value, at) => {
-                let e = self.generate_constraints(incoming, at)?;
+                let total_effect = self.generate_constraints(incoming, at)?;
 
                 // Hardcode value type to int for now. can deal with this later
                 self.ty_constraints
-                    .push((Type::Variable(ty_var), Type::Int));
+                    .push((Type::InferenceVariable(ty_var), Type::Int));
 
-                let at_effect = self.eff[&at.id].clone();
-                let at_region = self.reg[&at.id];
+                let at_effect = self.effect_map[&at.id].clone();
+                let at_region = self.place_map[&at.id];
 
                 let sub_effect =
                     Effect::Sequence(Box::new(at_effect), Box::new(Effect::Alloc(at_region)));
 
+                self.live_constraints.push(LivenessConstraint {
+                    region: at_region,
+                    effect: total_effect.clone(),
+                    span: at.span,
+                    kind: LivenessConstraintKind::Alloc,
+                });
                 self.reg_constraints.push((reg_var, at_region));
 
-                self.eff.insert(expression.id, sub_effect.clone());
-                e
+                self.effect_map.insert(expression.id, sub_effect.clone());
+                Effect::Sequence(Box::new(total_effect), Box::new(sub_effect))
             }
             hir::HirExpressionKind::Local(hir_id) => {
                 self.ty_constraints
-                    .push((Type::Variable(ty_var), self.ty[hir_id].clone()));
-                self.reg_constraints.push((reg_var, self.reg[hir_id]));
-                self.eff.insert(expression.id, Effect::Bottom);
+                    .push((Type::InferenceVariable(ty_var), self.ty[hir_id].clone()));
+                self.reg_constraints.push((reg_var, self.place_map[hir_id]));
+                self.effect_map.insert(expression.id, Effect::Bottom);
 
                 incoming.clone()
             }
             hir::HirExpressionKind::Block(hir_expressions) => {
+                let mut total_effect = incoming.clone();
+
                 let mut sub_effect = Effect::Bottom;
                 let mut last = None;
 
-                let mut e = incoming.clone();
                 for expr in hir_expressions {
-                    e = self.generate_constraints(&e, &expr)?;
-                    let expr_sub_effect = self.eff[&expr.id].clone();
+                    total_effect = self.generate_constraints(&total_effect, &expr)?;
+                    let expr_sub_effect = self.effect_map[&expr.id].clone();
                     sub_effect = Effect::Sequence(Box::new(sub_effect), Box::new(expr_sub_effect));
 
                     last = Some(expr);
                 }
                 if let Some(last) = last {
                     self.ty_constraints
-                        .push((Type::Variable(ty_var), self.ty[&last.id].clone()));
-                    self.reg_constraints.push((reg_var, self.reg[&last.id]));
+                        .push((Type::InferenceVariable(ty_var), self.ty[&last.id].clone()));
+                    self.reg_constraints.push((reg_var, self.place_map[&last.id]));
                 } else {
                     self.ty_constraints
-                        .push((Type::Variable(ty_var), Type::Unit));
+                        .push((Type::InferenceVariable(ty_var), Type::Unit));
                     self.reg_constraints.push((reg_var, Region::Global));
                 }
-                self.eff.insert(expression.id, sub_effect.clone());
-                e
+                self.effect_map.insert(expression.id, sub_effect.clone());
+                total_effect
             }
 
             hir::HirExpressionKind::LetIn(init, next) => {
@@ -220,50 +304,63 @@ impl<'hir, 'src> Check {
                 let total_effect = self.generate_constraints(&total_effect, next)?;
 
                 let next_ty_id = self.ty[&next.id].clone();
-                let next_reg_id = self.reg[&next.id];
+                let next_reg_id = self.place_map[&next.id];
 
                 self.ty_constraints
-                    .push((Type::Variable(ty_var), next_ty_id));
+                    .push((Type::InferenceVariable(ty_var), next_ty_id));
                 self.reg_constraints.push((reg_var, next_reg_id));
 
-                let init_effect = self.eff[&init.id].clone();
-                let next_effect = self.eff[&next.id].clone();
+                let init_effect = self.effect_map[&init.id].clone();
+                let next_effect = self.effect_map[&next.id].clone();
 
                 let sub_effect = Effect::Sequence(Box::new(init_effect), Box::new(next_effect));
 
-                self.eff.insert(expression.id, sub_effect.clone());
+                self.effect_map.insert(expression.id, sub_effect.clone());
                 total_effect
             }
-            hir::HirExpressionKind::Dereference(hir_expression) => {
-                let total_effect = self.generate_constraints(incoming, &hir_expression)?;
+            hir::HirExpressionKind::Dereference(target) => {
+                let total_effect = self.generate_constraints(incoming, &target)?;
 
                 // inner must be reference(e) where e is expr_ty_id
                 self.ty_constraints.push((
-                    self.ty[&hir_expression.id].clone(),
-                    Type::Reference(Box::new(Type::Variable(ty_var))),
+                    self.ty[&target.id].clone(),
+                    Type::Reference(Box::new(Type::InferenceVariable(ty_var))),
                 ));
 
-                self.reg_constraints
-                    .push((reg_var, self.reg[&hir_expression.id]));
+                self.reg_constraints.push((reg_var, self.place_map[&target.id]));
 
-                let sub_effect = self.eff[&hir_expression.id].clone();
+                let sub_effect = self.effect_map[&target.id].clone();
 
-                self.live.push((reg_var, total_effect.clone()));
-                self.eff.insert(expression.id, sub_effect.clone());
+                self.live_constraints.push(LivenessConstraint {
+                    region: reg_var,
+                    effect: total_effect.clone(),
+                    span: target.span,
+                    kind: LivenessConstraintKind::UseRef,
+                });
+                self.effect_map.insert(expression.id, sub_effect.clone());
                 total_effect
             }
-            hir::HirExpressionKind::Reference(hir_expression) => {
-                let total_effect = self.generate_constraints(incoming, &hir_expression)?;
+            hir::HirExpressionKind::Reference(target) => {
+                let total_effect = self.generate_constraints(incoming, &target)?;
 
                 self.ty_constraints.push((
-                    Type::Variable(ty_var),
-                    Type::Reference(Box::new(self.ty[&hir_expression.id].clone())),
+                    Type::InferenceVariable(ty_var),
+                    Type::Reference(Box::new(self.ty[&target.id].clone())),
                 ));
                 self.reg_constraints
-                    .push((reg_var, self.reg[&hir_expression.id].clone()));
+                    .push((reg_var, self.place_map[&target.id].clone()));
 
-                let sub_effect = self.eff[&hir_expression.id].clone();
-                self.eff.insert(expression.id, sub_effect.clone());
+                let at_region = self.place_map[&target.id];
+
+                self.live_constraints.push(LivenessConstraint {
+                    region: at_region,
+                    effect: total_effect.clone(),
+                    span: target.span,
+                    kind: LivenessConstraintKind::TakeRef,
+                });
+
+                let sub_effect = self.effect_map[&target.id].clone();
+                self.effect_map.insert(expression.id, sub_effect.clone());
 
                 total_effect
             }
@@ -276,7 +373,6 @@ impl<'hir, 'src> Check {
         for (lhs, rhs) in &self.reg_constraints {
             sub = Self::unify_region(sub, &lhs, &rhs);
         }
-        dbg!(&sub);
         sub
     }
     pub fn generate_type_substitutions(&mut self) -> HashMap<usize, Type> {
@@ -284,7 +380,6 @@ impl<'hir, 'src> Check {
         for (lhs, rhs) in &self.ty_constraints {
             sub = self.unify_ty(sub, &lhs, &rhs);
         }
-        dbg!(&sub);
         sub
     }
     pub fn apply_region(sub: &HashMap<usize, Region>, region: &Region) -> Region {
@@ -298,7 +393,7 @@ impl<'hir, 'src> Check {
     }
     pub fn apply_type(sub: &HashMap<usize, Type>, r#type: &Type) -> Type {
         match r#type {
-            Type::Variable(ty_id) if let Some(s) = sub.get(&ty_id.0) => s.clone(),
+            Type::InferenceVariable(ty_id) if let Some(s) = sub.get(&ty_id.0) => s.clone(),
             Type::Reference(inner_type) => {
                 Type::Reference(Box::new(Self::apply_type(sub, inner_type)))
             }
@@ -309,7 +404,7 @@ impl<'hir, 'src> Check {
         match r#effect {
             Effect::Bottom => Effect::Bottom,
             Effect::Fresh(region) => Effect::Fresh(Self::apply_region(sub, region)),
-            Effect::Free(region) => Effect::Free(Self::apply_region(sub, region)),
+            Effect::Free(region, s) => Effect::Free(Self::apply_region(sub, region), *s),
             Effect::Alloc(region) => Effect::Alloc(Self::apply_region(sub, region)),
             Effect::Sequence(first, second) => Effect::Sequence(
                 Box::new(Self::apply_effect(sub, first)),
@@ -343,7 +438,7 @@ impl<'hir, 'src> Check {
         let rhs = Self::apply_type(&sub, rhs);
 
         match (lhs, rhs) {
-            (Type::Variable(v), other) | (other, Type::Variable(v)) => {
+            (Type::InferenceVariable(v), other) | (other, Type::InferenceVariable(v)) => {
                 sub.insert(v.0, other);
             }
             (Type::Reference(l), Type::Reference(r)) => {
@@ -355,38 +450,7 @@ impl<'hir, 'src> Check {
         }
         sub
     }
-    // unused, but good to keep around; its annoying boilerplate
-    // pub fn walk<'a>(&mut self, expr: &'hir HirExpression<'hir>) -> CheckResult<'a, ()> {
-
-    //     match &expr.kind {
-    //         hir::HirExpressionKind::NewRegion => {}
-    //         hir::HirExpressionKind::FreeRegion(at) => {
-    //             self.walk(&at)?;
-    //         }
-    //         hir::HirExpressionKind::Allocate(value, at) => {
-    //             self.walk(&at)?;
-    //         }
-    //         hir::HirExpressionKind::Local(hir_id) => {}
-    //         hir::HirExpressionKind::Block(block_items) => {
-    //             for expr in block_items {
-    //                 self.walk(&expr)?;
-    //             }
-    //         }
-    //         hir::HirExpressionKind::Dereference(hir_expression) => {
-    //             self.walk(&hir_expression)?;
-    //         }
-    //         hir::HirExpressionKind::LetIn(init, next) => {
-    //             self.walk(&init)?;
-    //             self.walk(&next)?;
-    //         }
-    //         hir::HirExpressionKind::Reference(hir_expression) => {
-    //             self.walk(&hir_expression)?;
-    //         }
-    //     }
-    //     Ok(())
-    // }
 }
-pub type CheckResult<'a, T> = Result<T, Report<'a, (&'static str, Range<usize>)>>;
 impl Display for Effect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -403,7 +467,7 @@ impl Display for Effect {
             Effect::Alloc(r) => write!(f, "alloc {}", r),
 
             Effect::Fresh(r) => write!(f, "fresh {}", r),
-            Effect::Free(r) => write!(f, "free {}", r),
+            Effect::Free(r, _) => write!(f, "free {}", r),
         }
     }
 }

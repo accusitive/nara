@@ -1,8 +1,8 @@
-fn use_after_free() -> i32 {
+fn safe_dereference() -> i32 {
     let region = newrgn in {
         let r = &10 at region in {
-           freergn r;
-           *r
+           *r;
+           freergn r
         }
     }
 }

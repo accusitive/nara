@@ -1,4 +1,4 @@
-fn test (a: i32, b: i32) -> i32 {
+fn dangling () -> i32 {
     let reg = newrgn in {
         let n = &0 at reg in {
             freergn reg;
