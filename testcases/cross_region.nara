@@ -1,0 +1,12 @@
+fn cross_region_uaf () -> i32 {
+    let r1 = newrgn in {
+        let p = &5 at r1 in {
+            let r2 = newrgn in {
+                freergn r1;
+                let q = &10 at r2 in {
+                    *p; *q
+                }
+            }
+        }
+    }
+}

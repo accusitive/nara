@@ -1,0 +1,8 @@
+fn aliasing_regions () -> i32 {
+    let r1 = newrgn in {
+        let r2 = r1 in { // alias r1
+            freergn r1;
+            freergn r2
+        }
+    }
+}

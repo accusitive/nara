@@ -23,6 +23,7 @@ impl Display for Region {
         }
     }
 }
+
 #[derive(Debug)]
 pub struct Check<'a> {
     pub next_id: usize,
@@ -316,7 +317,7 @@ impl<'hir, 'src> Check<'_> {
                 let sub_effect = Effect::Sequence(Box::new(init_effect), Box::new(next_effect));
 
                 self.effect_map.insert(expression.id, sub_effect.clone());
-                total_effect
+                Effect::Sequence(Box::new(total_effect), Box::new(sub_effect))
             }
             hir::HirExpressionKind::Dereference(target) => {
                 let total_effect = self.generate_constraints(incoming, &target)?;
@@ -338,7 +339,7 @@ impl<'hir, 'src> Check<'_> {
                     kind: LivenessConstraintKind::UseRef,
                 });
                 self.effect_map.insert(expression.id, sub_effect.clone());
-                total_effect
+                Effect::Sequence(Box::new(total_effect), Box::new(sub_effect))
             }
             hir::HirExpressionKind::Reference(target) => {
                 let total_effect = self.generate_constraints(incoming, &target)?;
@@ -362,7 +363,7 @@ impl<'hir, 'src> Check<'_> {
                 let sub_effect = self.effect_map[&target.id].clone();
                 self.effect_map.insert(expression.id, sub_effect.clone());
 
-                total_effect
+                Effect::Sequence(Box::new(total_effect), Box::new(sub_effect))
             }
         };
 

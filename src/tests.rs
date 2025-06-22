@@ -51,7 +51,16 @@ fn use_after_free() {
 fn dangling() {
     run_liveness_check_panic_test(include_str!("../testcases/dangling.nara"));
 }
-
+#[test]
+#[should_panic]
+fn cross_region() {
+    run_liveness_check_panic_test(include_str!("../testcases/cross_region.nara"));
+}
+#[test]
+#[should_panic]
+fn region_alias() {
+    run_liveness_check_panic_test(include_str!("../testcases/region_alias.nara"));
+}
 #[test]
 fn safe_dereference() {
     run_liveness_check_panic_test(include_str!("../testcases/safe_dereference.nara"));
