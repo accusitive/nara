@@ -12,6 +12,7 @@ pub enum Keyword {
     Fn,
     In,
     At,
+    For,
     Newrgn,
     Freergn
 }
@@ -35,7 +36,8 @@ pub enum Punctuation {
     Semicolon,
     Plus,
     Star,
-    Ampersand
+    Ampersand,
+    Tick
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiteralTok<'a> {
@@ -60,6 +62,8 @@ pub fn lexer<'src>() -> impl Parser<
     let kw = ident().map(|ident| match ident {
         "let" => Token::Keyword(Keyword::Let),
         "i32" => Token::Keyword(Keyword::I32),
+        "for" => Token::Keyword(Keyword::For),
+
         "void" => Token::Keyword(Keyword::Void),
         "newrgn" => Token::Keyword(Keyword::Newrgn),
         "freergn" => Token::Keyword(Keyword::Freergn),
@@ -89,6 +93,8 @@ pub fn lexer<'src>() -> impl Parser<
         just('+').map(|_| Punctuation::Plus),
         just('*').map(|_| Punctuation::Star),
         just('&').map(|_| Punctuation::Ampersand),
+        just('\'').map(|_| Punctuation::Tick),
+
     ))
     .map(|p| Token::Punctuation(p));
 

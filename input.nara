@@ -1,10 +1,5 @@
-fn safe_basic () -> i32 {
-    let r = newrgn in {
-        let x = &100 at r in {
-            let y = *x in {
-                freergn r;
-                y
-            }
-        }
+fn safe_basic <'a> (x: i32) -> i32 {
+    let x = newrgn in {
+        freergn x
     }
 }

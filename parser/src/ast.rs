@@ -18,25 +18,32 @@ pub struct FunctionItem<'src> {
 #[derive(Debug)]
 pub struct FunctionParameter<'src> {
     pub name: Spanned<Identifier<'src>>,
-    pub ty: Spanned<Ty>,
+    pub ty: Spanned<Ty<'src>>,
 }
 #[derive(Debug)]
 pub struct FunctionSignature<'src> {
     pub parameters: Vec<Spanned<FunctionParameter<'src>>>,
-    pub ret: Spanned<Ty>,
+    pub ret: Spanned<Ty<'src>>,
+    pub type_parameters: Vec<Spanned<TypeParameter<'src>>>
 }
 #[derive(Debug)]
-pub enum Ty {
+pub enum Ty<'a> {
     Int,
     Unit,
-    BOol,
+    Bool,
+    
     Ref(Box<Spanned<Self>>),
     Function {
         params: Vec<Spanned<Self>>,
         ret: Box<Spanned<Self>>,
     },
+    Forall(Vec<Spanned<TypeParameter<'a>>>, Box<Spanned<Self>>)
 }
-
+#[derive(Debug)]
+pub enum TypeParameter<'src> {
+    Region(Spanned<Identifier<'src>>),
+    Type(Spanned<Identifier<'src>>)
+}
 #[derive(Debug, Clone)]
 pub enum Value {
     Number(i64),

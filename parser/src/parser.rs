@@ -7,7 +7,7 @@ use crate::{
     Spanned,
     ast::{
         Expression, FunctionItem, FunctionParameter, FunctionSignature, Item, TranslationUnit, Ty,
-        Value,
+        TypeParameter, Value,
     },
     lexer::{Keyword, Punctuation, Token},
 };
@@ -73,8 +73,24 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
 + Clone {
     let identifier = select_ref!( Token::Identifier(x) => x).map_with(|s, e| Spanned::e(*s, e));
     let ty = recursive(|ty| {
-        let int = just(Token::Keyword(crate::lexer::Keyword::I32))
-            .map_with(|_, e| Spanned::e(Ty::Int, e));
+        let int = just(Token::Keyword(crate::lexer::Keyword::I32)).map_with(|_, e| e!(Ty::Int, e));
+
+        let type_parameter = choice((
+            identifier.map_with(|i, e| e!(TypeParameter::Type(i), e)),
+            just(Token::Punctuation(Punctuation::Tick))
+                .ignore_then(identifier)
+                .map_with(|i, e| e!(TypeParameter::Type(i), e)),
+        ));
+        let type_parameters = type_parameter.separated_by(comma!()).collect::<Vec<_>>();
+
+        let forall = just(Token::Keyword(Keyword::For))
+            .ignore_then(type_parameters.delimited_by(
+                just(Token::Punctuation(Punctuation::LeftAngle)),
+                just(Token::Punctuation(Punctuation::RightAngle)),
+            ))
+            .then(ty.clone())
+            .map_with(|(type_parameters, t), e| e!(Ty::Forall(type_parameters, Box::new(t)), e));
+
         let function_type = ty
             .clone()
             .separated_by(comma!())
@@ -92,7 +108,7 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
                 )
             });
 
-        choice((int, function_type))
+        choice((int, function_type, forall))
     });
 
     let expression = recursive(|expr| {
@@ -169,10 +185,36 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
         .collect::<Vec<_>>()
         .delimited_by(open_param!(), close_param!());
 
-    let signature = parameters
+    let type_parameter = choice((
+        identifier.map_with(|i, e| e!(TypeParameter::Type(i), e)),
+        just(Token::Punctuation(Punctuation::Tick))
+            .ignore_then(identifier)
+            .map_with(|i, e| e!(TypeParameter::Type(i), e)),
+    ));
+    let type_parameters = type_parameter
+        .separated_by(comma!())
+        .collect::<Vec<_>>()
+        .delimited_by(
+            just(Token::Punctuation(Punctuation::LeftAngle)),
+            just(Token::Punctuation(Punctuation::RightAngle)),
+        )
+        .or_not()
+        .map(|x| x.unwrap_or_default());
+
+    let signature = type_parameters
+        .then(parameters)
         .then_ignore(skinny_arrow!())
         .then(ty)
-        .map_with(|(parameters, ret), e| e!(FunctionSignature { parameters, ret }, e));
+        .map_with(|((type_parameters, parameters), ret), e| {
+            e!(
+                FunctionSignature {
+                    parameters,
+                    ret,
+                    type_parameters
+                },
+                e
+            )
+        });
 
     let fn_item = just(Token::Keyword(crate::lexer::Keyword::Fn))
         .ignore_then(identifier)
