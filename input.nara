@@ -1,3 +1,7 @@
-fn safe_basic <'a> (x: i32) -> i32 {
-    42 at x
+fn safe_basic(x: i32) -> i32 {
+    let r = newrgn in {
+        let n = 42 at r in {
+            freergn n
+        }
+    }
 }

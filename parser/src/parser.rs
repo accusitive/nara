@@ -91,10 +91,10 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
             .then(ty.clone())
             .map_with(|(type_parameters, t), e| e!(Ty::Forall(type_parameters, Box::new(t)), e));
 
-        let at = ty
-            .clone()
-            .then(just(Token::Punctuation(Punctuation::At)))
-            .ignore_then(region);
+        // let at = ty
+        //     .clone()
+        //     .then(just(Token::Punctuation(Punctuation::At)))
+        //     .ignore_then(region);
         let function_type = ty
             .clone()
             .separated_by(comma!())
