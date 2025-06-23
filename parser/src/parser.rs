@@ -72,14 +72,14 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
 -> impl Parser<'src, I, Spanned<TranslationUnit<'src>>, chumsky::extra::Err<Rich<'src, Token<'src>>>>
 + Clone {
     let identifier = select_ref!( Token::Identifier(x) => x).map_with(|s, e| Spanned::e(*s, e));
+    let region = just(Token::Punctuation(Punctuation::Tick)).ignore_then(identifier);
+
     let ty = recursive(|ty| {
         let int = just(Token::Keyword(crate::lexer::Keyword::I32)).map_with(|_, e| e!(Ty::Int, e));
 
         let type_parameter = choice((
             identifier.map_with(|i, e| e!(TypeParameter::Type(i), e)),
-            just(Token::Punctuation(Punctuation::Tick))
-                .ignore_then(identifier)
-                .map_with(|i, e| e!(TypeParameter::Type(i), e)),
+            region.map_with(|i, e| e!(TypeParameter::Region(i), e)),
         ));
         let type_parameters = type_parameter.separated_by(comma!()).collect::<Vec<_>>();
 
@@ -91,6 +91,10 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
             .then(ty.clone())
             .map_with(|(type_parameters, t), e| e!(Ty::Forall(type_parameters, Box::new(t)), e));
 
+        let at = ty
+            .clone()
+            .then(just(Token::Punctuation(Punctuation::At)))
+            .ignore_then(region);
         let function_type = ty
             .clone()
             .separated_by(comma!())

@@ -17,3 +17,4 @@ fn main: () -> void { // call this '0
     }
     let arena_person = new_person<arena>(); // new_person::<'arena>();
 }
+

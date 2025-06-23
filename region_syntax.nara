@@ -1,0 +1,11 @@
+fn allocate_at<T>(location: (), value: T) -> &T {
+//                          ^ '0       ^'1   ^'2
+
+    let p: &T = value at location;
+//         ^ '3 ==       ^ '0   
+    p
+    // '2 == '3
+// lets call this 'a: '1
+// lets call this 'r and assuemd its been unified/substituted: '3 == '0 == '2
+// -> allocate_at<'r, 'a, T>(location: () @ 'r, value: T @ '1) -> (&T) @ 'r
+}
