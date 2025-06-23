@@ -9,3 +9,8 @@ fn allocate_at<T>(location: (), value: T) -> &T {
 // lets call this 'r and assuemd its been unified/substituted: '3 == '0 == '2
 // -> allocate_at<'r, 'a, T>(location: () @ 'r, value: T @ '1) -> (&T) @ 'r
 }
+
+
+fn some_math(location: (), base: i32 @ location, another: i32) -> i32 @ location {
+    (base + another) at location
+}
