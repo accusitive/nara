@@ -14,3 +14,28 @@ fn allocate_at<T>(location: (), value: T) -> &T {
 fn some_math(location: (), base: i32 @ location, another: i32) -> i32 @ location {
     (base + another) at location
 }
+fn map<T, U>(value: T, mapper: fn(T @ value) -> U @ value) -> U @ value {
+//                  ^'1        ^'2^'0   ^'1           ^'1 
+
+    mapper(value) // -> U @ value
+//                      ^1'
+// implicitly considered as:
+// fn map<'a, 'b, T, U>(value: T @ 'a, mapper: (fn(T @ 'a) -> U @ 'a) @ 'b) -> U @ 'a
+// therefore a call like this:
+/*
+fn showcase() { // '0
+    let value = new 42; // allocated in '0
+    let wrapper = |x| { Option::Some(x) } // maybe 'global?
+    let m = map(42, wrapper);
+}
+
+// regions passed like:
+map<'0, 'global>(42, wrapper)
+
+// hoisted into
+fn wrapper_lifted<T>(x: T) -> Option<T> {
+//                      ^'0          ^'0
+    Option::Some(T)
+}
+*/
+}
