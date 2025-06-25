@@ -1,3 +1,4 @@
+
 fn allocate_at<T>(location: (), value: T) -> &T {
 //                          ^ '0       ^'1   ^'2
 
@@ -5,8 +6,9 @@ fn allocate_at<T>(location: (), value: T) -> &T {
 //         ^ '3 ==       ^ '0   
     p
     // '2 == '3
+
 // lets call this 'a: '1
-// lets call this 'r and assuemd its been unified/substituted: '3 == '0 == '2
+// lets call this 'r: '3 == '0 == '2 (all the same after unification)
 // -> allocate_at<'r, 'a, T>(location: () @ 'r, value: T @ '1) -> (&T) @ 'r
 }
 
@@ -38,4 +40,44 @@ fn wrapper_lifted<T>(x: T) -> Option<T> {
     Option::Some(T)
 }
 */
+}
+// open question: should i be parametric over types, or (type, region)
+// should type Option<T> be fulfilled by Option<i32> or Option<i32 @ arena> ?
+
+type Option<T> = {
+    | Some(T)
+//         ^'0
+    | None
+}
+
+
+type Double<T> = {
+    first: T,
+    second: T
+}
+/* -> 
+type Double<'a, 'b, T> = {
+    first: T @ 'a,
+    second: T @ 'b
+}
+*/
+type OneAfterAnother<T> = {
+    first: T,
+    second: T @ first
+}
+fn test(arena: ()) -> Double {
+
+}
+// theoretically it can be inferred?
+type Something {
+    value: i32
+}
+
+// Maybe this setup?
+fn ret_something(val: i32) -> Something { // { value: i32}
+//                    ^'0                             ^'1
+// remember, val not having an explicit region means that it introduces a new region, like rust's ret_something<'a>(val: i32 @ 'a) (although we dont have this syntax)
+    Something {
+        value: val // unify '1 of Something { value: '1 } = '0, therefore the ty is `Something { val: i32 @ '0}
+    }
 }

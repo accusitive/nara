@@ -65,3 +65,8 @@ fn region_alias() {
 fn safe_dereference() {
     run_liveness_check_panic_test(include_str!("../testcases/safe_dereference.nara"));
 }
+#[test]
+#[should_panic]
+fn syntax_error() {
+    run_liveness_check_panic_test(include_str!("../testcases/syntax_error.nara"));
+}

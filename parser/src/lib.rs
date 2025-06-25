@@ -37,7 +37,7 @@ impl<T> Spanned<T> {
             value: value,
         }
     }
-    fn new(value: T, span: SimpleSpan) -> Self {
+    pub fn new(value: T, span: SimpleSpan) -> Self {
         Spanned {
             span: span,
             value: value,

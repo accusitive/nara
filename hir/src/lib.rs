@@ -21,7 +21,7 @@ pub enum HirExpressionKind<'hir> {
     Block(Vec<&'hir HirExpression<'hir>>),
     Dereference(&'hir HirExpression<'hir>),
     LetIn(&'hir HirExpression<'hir>, &'hir HirExpression<'hir>),
-    Reference(&'hir HirExpression<'hir>)
+    Reference(&'hir HirExpression<'hir>),
 }
 #[derive(Debug)]
 pub struct Hir<'hir, 'src> {
@@ -108,7 +108,9 @@ impl<'hir, 'src> Hir<'hir, 'src> {
             }
             Expression::Dereference(spanned) => {
                 HirExpressionKind::Dereference(self.lower_expression(&spanned))
-            }
+            } // Expression::Tuple(spanneds) => HirExpressionKind::Tuple(
+              //     spanneds.iter().map(|e| self.lower_expression(e)).collect(),
+              // ),
         };
         let e = HirExpression {
             kind,

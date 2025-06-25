@@ -111,17 +111,30 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
                     e
                 )
             });
+        // let tuple = ty
+        //     .clone()
+        //     .separated_by(comma!())
+        //     .collect::<Vec<_>>()
+        //     .delimited_by(open_param!(), close_param!())
+        //     .map_with(|params, e| e!(Ty::Tuple(params), e));
 
         choice((int, function_type, forall))
     });
 
     let expression = recursive(|expr| {
-        let value = select_ref!( Token::Literal(crate::lexer::LiteralTok::Integer(i)) => i)
-            .map_with(
-                |s, e: &mut MapExtra<'_, '_, I, chumsky::extra::Err<Rich<'src, Token<'src>>>>| {
-                    e!(Value::Number(*s), e)
-                },
-            );
+        let int = select_ref!( Token::Literal(crate::lexer::LiteralTok::Integer(i)) => i).map_with(
+            |s, e: &mut MapExtra<'_, '_, I, chumsky::extra::Err<Rich<'src, Token<'src>>>>| {
+                e!(Value::Number(*s), e)
+            },
+        );
+        // let tuple = expr
+        //     .clone()
+        //     .separated_by(comma!())
+        //     .collect::<Vec<_>>()
+        //     .delimited_by(open_param!(), close_param!())
+        //     .map_with(|params, e| e!(Value::Tuple(params), e));
+        let value = choice((int,));
+
         let path = identifier
             .clone()
             .map_with(|v, e| e!(Expression::Path(v), e));
@@ -174,6 +187,13 @@ pub fn parser<'src, I: BorrowInput<'src, Token = Token<'src>, Span = SimpleSpan>
             .collect::<Vec<_>>()
             .delimited_by(open_bracket!(), close_bracket!())
             .map_with(|exprs, e| e!(Expression::Block(exprs), e));
+
+        // let tuple = expr
+        //     .clone()
+        //     .separated_by(comma!())
+        //     .collect::<Vec<_>>()
+        //     .delimited_by(open_param!(), close_param!())
+        //     .map_with(|params, e| e!(Expression::Tuple(params), e));
 
         choice((block, base_expr))
     });

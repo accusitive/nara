@@ -24,25 +24,26 @@ pub struct FunctionParameter<'src> {
 pub struct FunctionSignature<'src> {
     pub parameters: Vec<Spanned<FunctionParameter<'src>>>,
     pub ret: Spanned<Ty<'src>>,
-    pub type_parameters: Vec<Spanned<TypeParameter<'src>>>
+    pub type_parameters: Vec<Spanned<TypeParameter<'src>>>,
 }
 #[derive(Debug)]
 pub enum Ty<'a> {
     Int,
     Unit,
     Bool,
-    
+
     Ref(Box<Spanned<Self>>),
     Function {
         params: Vec<Spanned<Self>>,
         ret: Box<Spanned<Self>>,
     },
-    Forall(Vec<Spanned<TypeParameter<'a>>>, Box<Spanned<Self>>)
+    Forall(Vec<Spanned<TypeParameter<'a>>>, Box<Spanned<Self>>),
+    Tuple(Vec<Spanned<Ty<'a>>>),
 }
 #[derive(Debug)]
 pub enum TypeParameter<'src> {
     Region(Spanned<Identifier<'src>>),
-    Type(Spanned<Identifier<'src>>)
+    Type(Spanned<Identifier<'src>>),
 }
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -65,6 +66,5 @@ pub enum Expression<'src> {
         region: Box<Spanned<Self>>,
     },
     Reference(Box<Spanned<Self>>),
-    Dereference(Box<Spanned<Self>>)
-
+    Dereference(Box<Spanned<Self>>),
 }

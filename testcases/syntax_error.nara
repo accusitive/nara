@@ -1,4 +1,4 @@
-fn safe_basic(x: i32) -> i32 {
+fn safe_basic x: i32 -> i32 {
     let r = newrgn in {
         let n = 42 at r in {
             n

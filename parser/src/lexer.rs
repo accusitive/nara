@@ -14,7 +14,7 @@ pub enum Keyword {
     At,
     For,
     Newrgn,
-    Freergn
+    Freergn,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Punctuation {
@@ -38,7 +38,7 @@ pub enum Punctuation {
     Star,
     Ampersand,
     Tick,
-    At
+    At,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiteralTok<'a> {
@@ -96,7 +96,6 @@ pub fn lexer<'src>() -> impl Parser<
         just('&').map(|_| Punctuation::Ampersand),
         just('\'').map(|_| Punctuation::Tick),
         just('@').map(|_| Punctuation::At),
-
     ))
     .map(|p| Token::Punctuation(p));
 

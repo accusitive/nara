@@ -167,7 +167,7 @@ impl<'hir, 'src> Check<'_> {
                         }
                         LivenessConstraintKind::Dangling => {
                             "Cannot return a reference to a region that has been freed"
-                        },
+                        }
                     };
                     self.diagnostics.push(
                         Report::build(
@@ -290,7 +290,8 @@ impl<'hir, 'src> Check<'_> {
                 if let Some(last) = last {
                     self.ty_constraints
                         .push((Type::InferenceVariable(ty_var), self.ty[&last.id].clone()));
-                    self.reg_constraints.push((reg_var, self.place_map[&last.id]));
+                    self.reg_constraints
+                        .push((reg_var, self.place_map[&last.id]));
                 } else {
                     self.ty_constraints
                         .push((Type::InferenceVariable(ty_var), Type::Unit));
@@ -299,7 +300,6 @@ impl<'hir, 'src> Check<'_> {
                 self.effect_map.insert(expression.id, sub_effect.clone());
                 total_effect
             }
-
             hir::HirExpressionKind::LetIn(init, next) => {
                 let total_effect = self.generate_constraints(incoming, init)?;
                 let total_effect = self.generate_constraints(&total_effect, next)?;
@@ -328,7 +328,8 @@ impl<'hir, 'src> Check<'_> {
                     Type::Reference(Box::new(Type::InferenceVariable(ty_var))),
                 ));
 
-                self.reg_constraints.push((reg_var, self.place_map[&target.id]));
+                self.reg_constraints
+                    .push((reg_var, self.place_map[&target.id]));
 
                 let sub_effect = self.effect_map[&target.id].clone();
 
@@ -364,7 +365,17 @@ impl<'hir, 'src> Check<'_> {
                 self.effect_map.insert(expression.id, sub_effect.clone());
 
                 Effect::Sequence(Box::new(total_effect), Box::new(sub_effect))
-            }
+            } // hir::HirExpressionKind::Tuple(hir_expressions) => {
+              //     let mut total_effect = incoming.clone();
+
+              //     let mut members = vec![];
+              //     for expr in hir_expressions {
+              //         total_effect = self.generate_constraints(&total_effect, expr)?;
+
+              //     }
+
+              //     total_effect
+              // },
         };
 
         Ok(effect)
